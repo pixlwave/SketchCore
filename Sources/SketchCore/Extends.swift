@@ -101,7 +101,7 @@ public extension NSAttributedString {
 public extension SKShader {
     static var textureCrop = { () -> SKShader in
         guard
-            let url = Bundle(for: Sketch.self).url(forResource: "TextureCrop", withExtension: "fsh"),
+            let url = Bundle.module.url(forResource: "TextureCrop", withExtension: "fsh"),
             let source = try? String(contentsOf: url)
             else {
                 fatalError("Unable to load contents of TextureCrop.fsh")

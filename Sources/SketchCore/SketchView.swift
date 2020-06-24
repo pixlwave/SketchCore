@@ -30,7 +30,7 @@ public class SketchView: MTKView {
         sceneRenderPassDescriptor.colorAttachments[0].storeAction = .store
         
         // setup the render pipeline
-        guard let library = try? device.makeDefaultLibrary(bundle: Bundle(for: SketchView.self)) else {
+        guard let library = try? device.makeDefaultLibrary(bundle: Bundle.module) else {
             fatalError("Failed to make Metal library")
         }
         
