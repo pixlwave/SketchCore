@@ -18,16 +18,32 @@ public class SketchView: MTKView {
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal device not found") }
         
         // setup off screen buffer
-        let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: Sketch.pixelWidth, height: Sketch.pixelHeight, mipmapped: false)
+        let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                                                                         width: Sketch.pixelWidth,
+                                                                         height: Sketch.pixelHeight,
+                                                                         mipmapped: false)
         textureDescriptor.storageMode = .private
         textureDescriptor.usage = [.renderTarget, .shaderRead]
         
         guard let texture = device.makeTexture(descriptor: textureDescriptor) else { fatalError("Error creating Metal texture") }
         self.texture = texture
         
+        // set up depth buffer for 3d nodes
+        let depthBufferDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float,
+                                                                             width: Sketch.pixelWidth,
+                                                                             height: Sketch.pixelHeight,
+                                                                             mipmapped: false)
+        depthBufferDescriptor.storageMode = .private
+        depthBufferDescriptor.usage = [.renderTarget]
+        let depthBuffer = device.makeTexture(descriptor: depthBufferDescriptor)
+        
         sceneRenderPassDescriptor.colorAttachments[0].texture = texture
         sceneRenderPassDescriptor.colorAttachments[0].loadAction = .load
         sceneRenderPassDescriptor.colorAttachments[0].storeAction = .store
+        sceneRenderPassDescriptor.depthAttachment.texture = depthBuffer
+        sceneRenderPassDescriptor.depthAttachment.clearDepth = 0.0          // scenekit now uses a reverse-z depth buffer
+        sceneRenderPassDescriptor.depthAttachment.loadAction = .clear
+        sceneRenderPassDescriptor.depthAttachment.storeAction = .dontCare
         
         // setup the render pipeline
         guard let library = try? device.makeDefaultLibrary(bundle: Bundle.module) else {
@@ -46,6 +62,7 @@ public class SketchView: MTKView {
         pipelineDescriptor.colorAttachments[0].destinationAlphaBlendFactor = .one
         pipelineDescriptor.vertexFunction = library.makeFunction(name: "vertexSimpleQuad")
         pipelineDescriptor.fragmentFunction = library.makeFunction(name: "displayColor")
+        pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
         
         do {
             scenePipeline = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
@@ -58,6 +75,7 @@ public class SketchView: MTKView {
         pipelineDescriptor.colorAttachments[0].isBlendingEnabled = false
         pipelineDescriptor.vertexFunction = library.makeFunction(name: "mapTexture")
         pipelineDescriptor.fragmentFunction = library.makeFunction(name: "displayTexture")
+        pipelineDescriptor.depthAttachmentPixelFormat = .invalid
         
         do {
             texturedQuadPipeline = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
@@ -86,14 +104,27 @@ public class SketchView: MTKView {
         
         // replace the off-screen buffer texture if the sketch size has changed
         if Sketch.pixelWidth != texture.width || Sketch.pixelHeight != texture.height {
-            let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: Sketch.pixelWidth, height: Sketch.pixelHeight, mipmapped: false)
+            let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                                                                             width: Sketch.pixelWidth,
+                                                                             height: Sketch.pixelHeight,
+                                                                             mipmapped: false)
             textureDescriptor.storageMode = .private
             textureDescriptor.usage = [.renderTarget, .shaderRead]
             
             guard let texture = device?.makeTexture(descriptor: textureDescriptor) else { fatalError("Error creating Metal texture") }
             self.texture = texture
             
+            // set up depth buffer for 3d nodes
+            let depthBufferDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float,
+                                                                                 width: Sketch.pixelWidth,
+                                                                                 height: Sketch.pixelHeight,
+                                                                                 mipmapped: false)
+            depthBufferDescriptor.storageMode = .private
+            depthBufferDescriptor.usage = [.renderTarget]
+            guard let depthBuffer = device?.makeTexture(descriptor: depthBufferDescriptor) else { fatalError("Error creating Metal depth buffer") }
+            
             sceneRenderPassDescriptor.colorAttachments[0].texture = texture
+            sceneRenderPassDescriptor.depthAttachment.texture = depthBuffer
         }
         
         // set up the scene renderer
@@ -145,7 +176,7 @@ public class SketchView: MTKView {
         backgroundCommandEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         backgroundCommandEncoder.endEncoding()
         
-        // render scenekit scene to texture
+        // render spritekit scene to texture
         renderer.render(withViewport: CGRect(x: 0, y: 0, width: texture.width, height: texture.height), commandBuffer: commandBuffer, renderPassDescriptor: sceneRenderPassDescriptor)
         
         // configure current drawable
